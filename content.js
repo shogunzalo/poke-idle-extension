@@ -10,6 +10,7 @@
 
   let settings = { ...DEFAULTS };
   let timer = null;
+  let lastThrow = 0; // timestamp guard so we don't hammer mid-animation
 
   // Primary selector (class-only). The full descendant chain is a fallback in
   // case `cap-throw` ever becomes ambiguous on the page.
@@ -30,18 +31,23 @@
   }
 
   function throwBall(el) {
-    // Standard click covers most React/DOM handlers.
+    // A single native click. Firing extra mousedown/mouseup as well made the
+    // game process 2-3 interactions per throw, which slowed the page.
     el.click();
-    // Fallback for handlers that only listen for real pointer events.
-    const opts = { bubbles: true, cancelable: true, view: window };
-    el.dispatchEvent(new MouseEvent("mousedown", opts));
-    el.dispatchEvent(new MouseEvent("mouseup", opts));
   }
 
   function tick() {
     if (!settings.enabled) return;
+    if (document.hidden) return; // don't work while the tab is in the background
+    // Cooldown: never click more than once per interval, and give the game a
+    // beat to finish the previous throw before the next one.
+    const now = performance.now();
+    if (now - lastThrow < settings.intervalMs) return;
     const btn = findButton();
-    if (isActionable(btn)) throwBall(btn);
+    if (isActionable(btn)) {
+      lastThrow = now;
+      throwBall(btn);
+    }
   }
 
   function startLoop() {
