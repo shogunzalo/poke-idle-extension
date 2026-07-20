@@ -5,13 +5,14 @@
 (() => {
   "use strict";
 
-  const DEFAULTS = { enabled: true, intervalMs: 800 };
+  const DEFAULTS = { enabled: true, intervalMs: 800, jitterMs: 400 };
   const MIN_INTERVAL = 250;
 
   let settings = { ...DEFAULTS };
   let timer = null;
   let lastThrow = 0; // timestamp guard so we don't hammer mid-animation
   let wasActionable = false; // edge detection: was the button clickable last tick?
+  let pendingThrow = null; // scheduled (jittered) click waiting to fire
 
   // Primary selector (class-only). The full descendant chain is a fallback in
   // case `cap-throw` ever becomes ambiguous on the page.
@@ -49,13 +50,23 @@
     // before we're allowed to click again. This throws exactly once per
     // appearance instead of hammering the button while it sits there, which is
     // what was jamming the game.
-    if (actionable && !wasActionable) {
+    if (actionable && !wasActionable && pendingThrow === null) {
       const now = performance.now();
       // Safety floor: never fire two throws closer than one interval apart,
       // even if the button flickers off/on quickly.
       if (now - lastThrow >= settings.intervalMs) {
-        lastThrow = now;
-        throwBall(btn);
+        // Humanize: wait a small random delay before actually clicking so the
+        // throw timing isn't robotically instant. Re-check that the button is
+        // still actionable when the delay elapses (it may have vanished).
+        const delay = Math.random() * Math.max(0, Number(settings.jitterMs) || 0);
+        pendingThrow = setTimeout(() => {
+          pendingThrow = null;
+          const target = findButton();
+          if (settings.enabled && !document.hidden && isActionable(target)) {
+            lastThrow = performance.now();
+            throwBall(target);
+          }
+        }, delay);
       }
     }
 
@@ -73,6 +84,11 @@
       clearInterval(timer);
       timer = null;
     }
+    if (pendingThrow !== null) {
+      clearTimeout(pendingThrow);
+      pendingThrow = null;
+    }
+    wasActionable = false; // reset edge state so the next start throws cleanly
   }
 
   // Load persisted settings, then start.
@@ -90,6 +106,7 @@
       settings.intervalMs = changes.intervalMs.newValue;
       restart = true;
     }
+    if (changes.jitterMs) settings.jitterMs = changes.jitterMs.newValue;
     if (restart) startLoop();
   });
 })();
