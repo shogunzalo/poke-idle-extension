@@ -1,6 +1,8 @@
 // Poke Idle Auto-Throw — content script
-// Repeatedly clicks the game's `button.cap-throw` while it is visible so
-// Pokémon get caught hands-free. Runs only on the game domain (see manifest).
+// Repeatedly clicks the game's `button.cap-throw` buttons while they are visible
+// so Pokémon get caught hands-free. When several Pokémon are down at once the
+// game shows one throw button per `.cap-row`, so we handle ALL of them, not just
+// the first. Runs only on the game domain (see manifest).
 
 (() => {
   "use strict";
@@ -10,17 +12,25 @@
 
   let settings = { ...DEFAULTS };
   let timer = null;
-  let lastThrow = 0; // timestamp guard so we don't hammer mid-animation
-  let wasActionable = false; // edge detection: was the button clickable last tick?
-  let pendingThrow = null; // scheduled (jittered) click waiting to fire
+
+  // Per-button state, keyed by the element itself. A WeakMap lets entries be
+  // garbage-collected automatically when the game removes a button from the DOM.
+  //   state = { wasActionable, lastThrow, pending }
+  const buttonState = new WeakMap();
+  // Live set of button states that currently have a scheduled (jittered) throw,
+  // so we can cancel and reset them all on stop/restart — a WeakMap isn't
+  // iterable.
+  const pendingStates = new Set();
 
   // Primary selector (class-only). The full descendant chain is a fallback in
   // case `cap-throw` ever becomes ambiguous on the page.
   const PRIMARY = "button.cap-throw";
   const FALLBACK = ".game-root .cap-panel .cap-list .cap-row button.cap-throw";
 
-  function findButton() {
-    return document.querySelector(PRIMARY) || document.querySelector(FALLBACK);
+  // Every throw button currently on the page (there can be several at once).
+  function findButtons() {
+    const primary = document.querySelectorAll(PRIMARY);
+    return primary.length ? primary : document.querySelectorAll(FALLBACK);
   }
 
   // Only click when the button is genuinely actionable.
@@ -42,35 +52,43 @@
     if (!settings.enabled) return;
     if (document.hidden) return; // don't work while the tab is in the background
 
-    const btn = findButton();
-    const actionable = isActionable(btn);
+    for (const btn of findButtons()) {
+      const actionable = isActionable(btn);
 
-    // Edge-triggered: click only on the RISING edge — i.e. the first tick the
-    // button becomes actionable. We then wait for it to go away (falling edge)
-    // before we're allowed to click again. This throws exactly once per
-    // appearance instead of hammering the button while it sits there, which is
-    // what was jamming the game.
-    if (actionable && !wasActionable && pendingThrow === null) {
-      const now = performance.now();
-      // Safety floor: never fire two throws closer than one interval apart,
-      // even if the button flickers off/on quickly.
-      if (now - lastThrow >= settings.intervalMs) {
-        // Humanize: wait a small random delay before actually clicking so the
-        // throw timing isn't robotically instant. Re-check that the button is
-        // still actionable when the delay elapses (it may have vanished).
-        const delay = Math.random() * Math.max(0, Number(settings.jitterMs) || 0);
-        pendingThrow = setTimeout(() => {
-          pendingThrow = null;
-          const target = findButton();
-          if (settings.enabled && !document.hidden && isActionable(target)) {
-            lastThrow = performance.now();
-            throwBall(target);
-          }
-        }, delay);
+      let state = buttonState.get(btn);
+      if (!state) {
+        state = { wasActionable: false, lastThrow: 0, pending: null };
+        buttonState.set(btn, state);
       }
-    }
 
-    wasActionable = actionable;
+      // Edge-triggered PER BUTTON: click only on the RISING edge — the first
+      // tick this particular button becomes actionable. We then wait for it to
+      // go away (falling edge) before clicking it again. This throws exactly
+      // once per appearance instead of hammering a button while it sits there,
+      // which is what was jamming the game.
+      if (actionable && !state.wasActionable && state.pending === null) {
+        const now = performance.now();
+        // Safety floor: never fire two throws at the same button closer than one
+        // interval apart, even if it flickers off/on quickly.
+        if (now - state.lastThrow >= settings.intervalMs) {
+          // Humanize: wait a small random delay before actually clicking so the
+          // throw timing isn't robotically instant. Re-check that the button is
+          // still actionable when the delay elapses (it may have vanished).
+          const delay = Math.random() * Math.max(0, Number(settings.jitterMs) || 0);
+          state.pending = setTimeout(() => {
+            state.pending = null;
+            pendingStates.delete(state);
+            if (settings.enabled && !document.hidden && isActionable(btn)) {
+              state.lastThrow = performance.now();
+              throwBall(btn);
+            }
+          }, delay);
+          pendingStates.add(state);
+        }
+      }
+
+      state.wasActionable = actionable;
+    }
   }
 
   function startLoop() {
@@ -84,11 +102,15 @@
       clearInterval(timer);
       timer = null;
     }
-    if (pendingThrow !== null) {
-      clearTimeout(pendingThrow);
-      pendingThrow = null;
+    // Cancel any scheduled throws and clear their pending flag so a fresh start
+    // can throw those buttons again. Reset the edge flag too so a button that is
+    // already actionable re-triggers on the next tick.
+    for (const state of pendingStates) {
+      clearTimeout(state.pending);
+      state.pending = null;
+      state.wasActionable = false;
     }
-    wasActionable = false; // reset edge state so the next start throws cleanly
+    pendingStates.clear();
   }
 
   // Load persisted settings, then start.
