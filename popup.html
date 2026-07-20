@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Poke Idle Auto-Throw</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      }
+      body {
+        width: 240px;
+        margin: 0;
+        padding: 14px 16px;
+      }
+      h1 {
+        font-size: 14px;
+        margin: 0 0 12px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 12px;
+        font-size: 13px;
+      }
+      input[type="number"] {
+        width: 72px;
+        padding: 4px 6px;
+        font-size: 13px;
+      }
+      /* iOS-style toggle */
+      .switch { position: relative; width: 40px; height: 22px; }
+      .switch input { opacity: 0; width: 0; height: 0; }
+      .slider {
+        position: absolute; inset: 0; cursor: pointer;
+        background: #bbb; border-radius: 22px; transition: 0.2s;
+      }
+      .slider::before {
+        content: ""; position: absolute; height: 16px; width: 16px;
+        left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: 0.2s;
+      }
+      input:checked + .slider { background: #34c759; }
+      input:checked + .slider::before { transform: translateX(18px); }
+      #status {
+        font-size: 12px;
+        opacity: 0.75;
+        margin: 4px 0 0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>🎯 Poke Idle Auto-Throw</h1>
+
+    <div class="row">
+      <label for="enabled">Auto-throw</label>
+      <span class="switch">
+        <input type="checkbox" id="enabled" />
+        <span class="slider"></span>
+      </span>
+    </div>
+
+    <div class="row">
+      <label for="interval">Interval (ms)</label>
+      <input type="number" id="interval" min="250" step="50" />
+    </div>
+
+    <p id="status">Paused</p>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

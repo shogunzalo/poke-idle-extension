@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Poke Idle Auto-Throw",
+  "version": "1.0.0",
+  "description": "Automatically clicks the throw button to catch Pokémon in the idle game, hands-free.",
+  "permissions": ["storage"],
+  "action": {
+    "default_title": "Poke Idle Auto-Throw",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://poke.idleworld.online/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ]
+}
