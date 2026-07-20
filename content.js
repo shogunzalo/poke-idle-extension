@@ -11,6 +11,7 @@
   let settings = { ...DEFAULTS };
   let timer = null;
   let lastThrow = 0; // timestamp guard so we don't hammer mid-animation
+  let wasActionable = false; // edge detection: was the button clickable last tick?
 
   // Primary selector (class-only). The full descendant chain is a fallback in
   // case `cap-throw` ever becomes ambiguous on the page.
@@ -39,15 +40,26 @@
   function tick() {
     if (!settings.enabled) return;
     if (document.hidden) return; // don't work while the tab is in the background
-    // Cooldown: never click more than once per interval, and give the game a
-    // beat to finish the previous throw before the next one.
-    const now = performance.now();
-    if (now - lastThrow < settings.intervalMs) return;
+
     const btn = findButton();
-    if (isActionable(btn)) {
-      lastThrow = now;
-      throwBall(btn);
+    const actionable = isActionable(btn);
+
+    // Edge-triggered: click only on the RISING edge — i.e. the first tick the
+    // button becomes actionable. We then wait for it to go away (falling edge)
+    // before we're allowed to click again. This throws exactly once per
+    // appearance instead of hammering the button while it sits there, which is
+    // what was jamming the game.
+    if (actionable && !wasActionable) {
+      const now = performance.now();
+      // Safety floor: never fire two throws closer than one interval apart,
+      // even if the button flickers off/on quickly.
+      if (now - lastThrow >= settings.intervalMs) {
+        lastThrow = now;
+        throwBall(btn);
+      }
     }
+
+    wasActionable = actionable;
   }
 
   function startLoop() {
