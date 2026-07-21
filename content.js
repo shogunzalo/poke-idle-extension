@@ -7,7 +7,7 @@
 (() => {
   "use strict";
 
-  const DEFAULTS = { enabled: true, intervalMs: 800, jitterMs: 400 };
+  const DEFAULTS = { enabled: true, intervalMs: 800, minDelayMs: 150, jitterMs: 400 };
   const MIN_INTERVAL = 250;
 
   let settings = { ...DEFAULTS };
@@ -71,10 +71,14 @@
         // Safety floor: never fire two throws at the same button closer than one
         // interval apart, even if it flickers off/on quickly.
         if (now - state.lastThrow >= settings.intervalMs) {
-          // Humanize: wait a small random delay before actually clicking so the
-          // throw timing isn't robotically instant. Re-check that the button is
-          // still actionable when the delay elapses (it may have vanished).
-          const delay = Math.random() * Math.max(0, Number(settings.jitterMs) || 0);
+          // Humanize: wait before actually clicking so the throw timing isn't
+          // robotically instant. A human always has some reaction time, so the
+          // delay is a minimum floor plus a random spread — never ~0. Re-check
+          // that the button is still actionable when it elapses (it may have
+          // vanished). Total delay ranges [minDelayMs, minDelayMs + jitterMs].
+          const min = Math.max(0, Number(settings.minDelayMs) || 0);
+          const jitter = Math.max(0, Number(settings.jitterMs) || 0);
+          const delay = min + Math.random() * jitter;
           state.pending = setTimeout(() => {
             state.pending = null;
             pendingStates.delete(state);
@@ -128,6 +132,7 @@
       settings.intervalMs = changes.intervalMs.newValue;
       restart = true;
     }
+    if (changes.minDelayMs) settings.minDelayMs = changes.minDelayMs.newValue;
     if (changes.jitterMs) settings.jitterMs = changes.jitterMs.newValue;
     if (restart) startLoop();
   });
